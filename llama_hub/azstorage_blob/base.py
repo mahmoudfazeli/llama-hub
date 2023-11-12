@@ -35,6 +35,9 @@ class AzStorageBlobReader(BaseReader):
             extension to a BaseReader class that specifies how to convert that file
             to text. See `SimpleDirectoryReader` for more details.
         account_url (str): URI to the storage account, may include SAS token.
+    	connection_string (Optional[str]): The connection string for the Azure Storage account.
+            This provides an alternative way of connecting to Azure Blob Storage,
+            incorporating all necessary authentication information in a single string.
         credential (Union[str, Dict[str, str], AzureNamedKeyCredential, AzureSasCredential, TokenCredential, None] = None):
             The credentials with which to authenticate. This is optional if the account URL already has a SAS token.
     """
@@ -49,9 +52,13 @@ class AzStorageBlobReader(BaseReader):
         file_extractor: Optional[Dict[str, Union[str, BaseReader]]] = None,
         account_url: str,
         credential: Optional[Any] = None,
+        connection_string: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """Initializes Azure Storage Account"""
+        # Check for incorrect usage: both connection string and account URL provided
+        if connection_string and account_url:
+            raise ValueError("Please provide either a connection string or an account URL with credentials, not both.")
         super().__init__(*args, **kwargs)
 
         self.container_name = container_name
@@ -62,6 +69,7 @@ class AzStorageBlobReader(BaseReader):
         self.file_extractor = file_extractor
 
         self.account_url = account_url
+        self.connection_string = connection_string
         self.credential = credential
 
     def load_data(self) -> List[Document]:
@@ -70,9 +78,12 @@ class AzStorageBlobReader(BaseReader):
         # from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
         from azure.storage.blob import ContainerClient
 
-        container_client = ContainerClient(
-            self.account_url, self.container_name, credential=self.credential
-        )
+        # Choose initialization method based on provided credentials
+        if self.connection_string:
+            container_client = ContainerClient.from_connection_string(self.connection_string, self.container_name)
+        else:
+            container_client = ContainerClient(self.account_url, self.container_name, credential=self.credential)
+
         total_download_start_time = time.time()
 
         with tempfile.TemporaryDirectory() as temp_dir:
